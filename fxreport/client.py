@@ -11,6 +11,10 @@ MAX_RETRIES = 3
 BACKOFF_SECONDS = 0.5
 
 
+class RateFetchError(RuntimeError):
+    """Raised when the Frankfurter API cannot be reached after retries."""
+
+
 def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
     """Fetch daily EUR rates for the inclusive range [start, end].
 
@@ -26,7 +30,11 @@ def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, 
             resp.raise_for_status()
             payload = resp.json()
             return payload.get("rates", {})
-        except requests.RequestException:
+        except requests.RequestException as error:
+            if attempt == MAX_RETRIES - 1:
+                raise RateFetchError(
+                    "could not retrieve rates from the Frankfurter API"
+                ) from error
             time.sleep(BACKOFF_SECONDS * (attempt + 1))
-            continue
-    return {}
+
+    raise AssertionError("retry loop completed unexpectedly")
