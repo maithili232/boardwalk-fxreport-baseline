@@ -9,7 +9,8 @@ from datetime import date
 import pytest
 import requests
 
-from fxreport import client
+from fxreport import cli, client
+from fxreport import report as report_module
 from fxreport.report import date_range, render, weekly_averages
 
 
@@ -93,3 +94,81 @@ def test_fetch_rates_drops_days_outside_requested_range(
     got = client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
     assert sorted(got) == ["2024-01-02", "2024-01-03"]
     assert "2023-12-29" not in got
+
+
+def test_fetch_rates_raises_after_exhausting_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bug 4: an unreachable API was swallowed and reported as an empty result,
+    so a network outage was indistinguishable from "this range has no data"."""
+
+    def boom(*args: object, **kwargs: object) -> _FakeResponse:
+        raise requests.ConnectionError("network down")
+
+    monkeypatch.setattr(client.requests, "get", boom)
+    monkeypatch.setattr(client.time, "sleep", lambda _s: None)
+
+    with pytest.raises(client.FetchError) as excinfo:
+        client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
+    assert "network down" in str(excinfo.value)
+
+
+def test_fetch_rates_does_not_sleep_after_the_final_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bug 4: the loop slept after *every* failure including the last one, so a
+    fully failing call burned BACKOFF_SECONDS * MAX_RETRIES of pure dead time
+    before giving up."""
+    slept: list[float] = []
+
+    def boom(*args: object, **kwargs: object) -> _FakeResponse:
+        raise requests.ConnectionError("nope")
+
+    monkeypatch.setattr(client.requests, "get", boom)
+    monkeypatch.setattr(client.time, "sleep", lambda s: slept.append(s))
+
+    with pytest.raises(client.FetchError):
+        client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
+    assert len(slept) == client.MAX_RETRIES - 1
+
+
+def test_fetch_rates_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient failure is still retried and recovered from."""
+    calls: list[int] = []
+
+    def flaky(*args: object, **kwargs: object) -> _FakeResponse:
+        calls.append(1)
+        if len(calls) == 1:
+            raise requests.ConnectionError("transient")
+        return _FakeResponse({"rates": {"2024-01-02": {"USD": 1.0956}}})
+
+    monkeypatch.setattr(client.requests, "get", flaky)
+    monkeypatch.setattr(client.time, "sleep", lambda _s: None)
+
+    got = client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
+    assert got == {"2024-01-02": {"USD": 1.0956}}
+    assert len(calls) == 2
+
+
+def test_cli_reports_a_fetch_failure_distinctly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Bug 4, end to end: the CLI must say the fetch failed rather than claim
+    the range has no data."""
+    monkeypatch.setattr(
+        report_module,
+        "fetch_rates",
+        lambda *a, **k: (_ for _ in ()).throw(client.FetchError("boom: unreachable")),
+    )
+    rc = cli.main(
+        [
+            "--start", "2024-01-01",
+            "--end", "2024-01-31",
+            "--currencies", "USD",
+            "--db", str(tmp_path / "cli.db"),  # type: ignore[operator]
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "boom: unreachable" in err
+    assert "no data" not in err

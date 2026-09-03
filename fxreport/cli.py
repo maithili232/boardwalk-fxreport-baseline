@@ -6,6 +6,7 @@ from datetime import date
 
 from fxreport import __version__
 from fxreport.cache import RateCache
+from fxreport.client import FetchError
 from fxreport.report import get_rates, render, weekly_averages
 
 
@@ -31,6 +32,9 @@ def main(argv=None) -> int:
     cache = RateCache(args.db)
     try:
         rates = get_rates(cache, start, end, currencies)
+    except FetchError as exc:
+        print("error: {}".format(exc), file=sys.stderr)
+        return 1
     finally:
         cache.close()
 

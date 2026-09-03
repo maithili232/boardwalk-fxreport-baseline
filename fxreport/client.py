@@ -11,6 +11,10 @@ MAX_RETRIES = 3
 BACKOFF_SECONDS = 0.5
 
 
+class FetchError(RuntimeError):
+    """Raised when the Frankfurter API could not be reached or understood."""
+
+
 def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
     """Fetch daily EUR rates for the inclusive range [start, end].
 
@@ -20,16 +24,23 @@ def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, 
     url = "{}/{}..{}".format(BASE_URL, start.isoformat(), end.isoformat())
     params = {"base": "EUR", "symbols": symbols}
 
+    last_error: Exception | None = None
     for attempt in range(MAX_RETRIES):
         try:
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
             payload = resp.json()
             return _within_range(payload.get("rates", {}), start, end)
-        except requests.RequestException:
+        except (requests.RequestException, ValueError) as exc:
+            last_error = exc
+            if attempt == MAX_RETRIES - 1:
+                break
             time.sleep(BACKOFF_SECONDS * (attempt + 1))
-            continue
-    return {}
+
+    raise FetchError(
+        f"could not fetch rates for {start.isoformat()}..{end.isoformat()} "
+        f"after {MAX_RETRIES} attempts: {last_error}"
+    ) from last_error
 
 
 def _within_range(
