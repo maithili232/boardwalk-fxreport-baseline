@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked build tools
+        run: |
+          python -m pip install --constraint requirements.lock pip==26.2.1
+          python -m pip install --constraint requirements.lock build==1.6.0
+      - name: Build distributions
+        run: python -m build
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/*.whl dist/*.tar.gz
+          --generate-notes
+          --title "$GITHUB_REF_NAME"
+          --verify-tag
