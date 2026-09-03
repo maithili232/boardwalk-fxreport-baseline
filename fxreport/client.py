@@ -1,8 +1,8 @@
 """HTTP client for the Frankfurter API (https://frankfurter.dev)."""
 
 import time
+from collections.abc import Iterable
 from datetime import date
-from typing import Dict, Iterable
 
 import requests
 
@@ -15,13 +15,13 @@ class FetchError(RuntimeError):
     """Raised when the Frankfurter API could not be reached or understood."""
 
 
-def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
+def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> dict[str, dict[str, float]]:
     """Fetch daily EUR rates for the inclusive range [start, end].
 
     Returns a mapping of ISO date string -> {currency: rate}.
     """
-    symbols = ",".join(sorted(set(c.upper() for c in currencies)))
-    url = "{}/{}..{}".format(BASE_URL, start.isoformat(), end.isoformat())
+    symbols = ",".join(sorted({c.upper() for c in currencies}))
+    url = f"{BASE_URL}/{start.isoformat()}..{end.isoformat()}"
     params = {"base": "EUR", "symbols": symbols}
 
     last_error: Exception | None = None
@@ -44,8 +44,8 @@ def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, 
 
 
 def _within_range(
-    rates: Dict[str, Dict[str, float]], start: date, end: date
-) -> Dict[str, Dict[str, float]]:
+    rates: dict[str, dict[str, float]], start: date, end: date
+) -> dict[str, dict[str, float]]:
     """Drop any day the API returned that falls outside [start, end].
 
     Frankfurter widens a range request backwards to the closest preceding

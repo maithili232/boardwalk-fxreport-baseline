@@ -1,8 +1,8 @@
 """SQLite cache for daily rates."""
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rates (
@@ -41,7 +41,7 @@ class RateCache:
         ).fetchone()
         return row is not None
 
-    def store(self, rates: Dict[str, Dict[str, float]]) -> int:
+    def store(self, rates: dict[str, dict[str, float]]) -> int:
         rows = []
         for day, by_currency in rates.items():
             for currency, rate in by_currency.items():
@@ -52,18 +52,21 @@ class RateCache:
         self.conn.commit()
         return len(rows)
 
-    def load(self, start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
-        out: Dict[str, Dict[str, float]] = {}
+    def load(
+        self, start: date, end: date, currencies: Iterable[str]
+    ) -> dict[str, dict[str, float]]:
+        out: dict[str, dict[str, float]] = {}
         for currency in currencies:
             cur = self.conn.execute(
-                "SELECT day, rate FROM rates WHERE currency = ? AND day >= ? AND day <= ? ORDER BY day",
+                "SELECT day, rate FROM rates WHERE currency = ? "
+                "AND day >= ? AND day <= ? ORDER BY day",
                 (currency, start.isoformat(), end.isoformat()),
             )
             for day, rate in cur.fetchall():
                 out.setdefault(day, {})[currency] = rate
         return out
 
-    def latest_day(self, currency: str) -> Optional[str]:
+    def latest_day(self, currency: str) -> str | None:
         row = self.conn.execute(
             "SELECT MAX(day) FROM rates WHERE currency = ?", (currency,)
         ).fetchone()
@@ -92,14 +95,14 @@ class RateCache:
         )
         self.conn.commit()
 
-    def covered_ranges(self, currency: str) -> List[Tuple[date, date]]:
+    def covered_ranges(self, currency: str) -> list[tuple[date, date]]:
         """Recorded ranges for `currency`, merged and sorted."""
         rows = self.conn.execute(
             "SELECT start, end FROM coverage WHERE currency = ? ORDER BY start, end",
             (currency,),
         ).fetchall()
 
-        merged: List[Tuple[date, date]] = []
+        merged: list[tuple[date, date]] = []
         for start_str, end_str in rows:
             start, end = date.fromisoformat(start_str), date.fromisoformat(end_str)
             if merged and start <= merged[-1][1] + timedelta(days=1):

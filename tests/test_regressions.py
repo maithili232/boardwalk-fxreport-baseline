@@ -6,15 +6,15 @@ them fails against the original code and passes after the corresponding fix.
 
 import pathlib
 import sqlite3
+import time
+from collections.abc import Iterable, Mapping
 from datetime import date, timedelta
-from typing import Iterable
 
 import pytest
 import requests
-
 from fxreport import cli, client
-from fxreport.cache import RateCache
 from fxreport import report as report_module
+from fxreport.cache import RateCache
 from fxreport.report import date_range, render, weekly_averages
 
 
@@ -64,15 +64,15 @@ def test_render_shows_distinct_weekly_values() -> None:
 
 
 class _FakeResponse:
-    def __init__(self, payload: dict[str, object], status: int = 200) -> None:
-        self._payload = payload
+    def __init__(self, payload: Mapping[str, object], status: int = 200) -> None:
+        self._payload: Mapping[str, object] = payload
         self.status_code = status
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise requests.HTTPError(f"{self.status_code} error")
 
-    def json(self) -> dict[str, object]:
+    def json(self) -> Mapping[str, object]:
         return self._payload
 
 
@@ -92,9 +92,7 @@ def test_fetch_rates_drops_days_outside_requested_range(
             "2024-01-03": {"USD": 1.0919},
         },
     }
-    monkeypatch.setattr(
-        client.requests, "get", lambda *a, **k: _FakeResponse(payload)
-    )
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _FakeResponse(payload))
     got = client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
     assert sorted(got) == ["2024-01-02", "2024-01-03"]
     assert "2023-12-29" not in got
@@ -109,8 +107,8 @@ def test_fetch_rates_raises_after_exhausting_retries(
     def boom(*args: object, **kwargs: object) -> _FakeResponse:
         raise requests.ConnectionError("network down")
 
-    monkeypatch.setattr(client.requests, "get", boom)
-    monkeypatch.setattr(client.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(requests, "get", boom)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
 
     with pytest.raises(client.FetchError) as excinfo:
         client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
@@ -128,8 +126,8 @@ def test_fetch_rates_does_not_sleep_after_the_final_attempt(
     def boom(*args: object, **kwargs: object) -> _FakeResponse:
         raise requests.ConnectionError("nope")
 
-    monkeypatch.setattr(client.requests, "get", boom)
-    monkeypatch.setattr(client.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(requests, "get", boom)
+    monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
 
     with pytest.raises(client.FetchError):
         client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
@@ -146,8 +144,8 @@ def test_fetch_rates_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> N
             raise requests.ConnectionError("transient")
         return _FakeResponse({"rates": {"2024-01-02": {"USD": 1.0956}}})
 
-    monkeypatch.setattr(client.requests, "get", flaky)
-    monkeypatch.setattr(client.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(requests, "get", flaky)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
 
     got = client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
     assert got == {"2024-01-02": {"USD": 1.0956}}
@@ -166,10 +164,14 @@ def test_cli_reports_a_fetch_failure_distinctly(
     )
     rc = cli.main(
         [
-            "--start", "2024-01-01",
-            "--end", "2024-01-31",
-            "--currencies", "USD",
-            "--db", str(tmp_path / "cli.db"),  # type: ignore[operator]
+            "--start",
+            "2024-01-01",
+            "--end",
+            "2024-01-31",
+            "--currencies",
+            "USD",
+            "--db",
+            str(tmp_path / "cli.db"),  # type: ignore[operator]
         ]
     )
     err = capsys.readouterr().err

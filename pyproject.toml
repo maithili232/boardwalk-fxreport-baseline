@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling==1.28.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fxreport"
+dynamic = ["version"]
+description = "Weekly EUR exchange rate summaries from the Frankfurter API"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["fx", "exchange-rates", "frankfurter", "reporting"]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "requests==2.34.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build==1.6.0",
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "ruff==0.16.5",
+    "types-requests==2.33.0.20260712",
+]
+
+[project.scripts]
+fxreport = "fxreport.cli:main"
+
+[tool.hatch.version]
+path = "fxreport/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fxreport"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/fxreport", "/tests", "/README.md", "/constraints.txt", "/pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["fxreport", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["fxreport", "tests"]
+warn_unreachable = true
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"

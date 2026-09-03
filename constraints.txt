@@ -1,0 +1,36 @@
+# Reproducible install constraints for fxreport.
+#
+# Direct dependencies are pinned in pyproject.toml; this file additionally
+# pins every transitive dependency so that installs are byte-for-byte
+# reproducible across machines and CI runs.
+#
+# Use it with every install:
+#     pip install -e ".[dev]" -c constraints.txt
+#
+# A constraints file never installs anything by itself, so entries that only
+# apply to some platforms (e.g. colorama on Windows) are harmless elsewhere.
+#
+# Regenerate after changing a pin in pyproject.toml:
+#     pip install -e ".[dev]" && pip freeze --exclude-editable | sort > constraints.txt
+Pygments==2.21.0
+ast_serialize==0.9.0
+build==1.6.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+colorama==0.4.6
+idna==3.19
+iniconfig==2.3.0
+librt==0.15.0
+mypy==2.3.1
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+pyproject_hooks==1.2.0
+pytest==9.1.1
+requests==2.34.2
+ruff==0.16.5
+types-requests==2.33.0.20260712
+typing_extensions==4.16.0
+urllib3==2.7.0
+hatchling==1.28.0
