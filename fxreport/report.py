@@ -22,12 +22,13 @@ def iso_week_key(day: date) -> str:
 
 
 def get_rates(cache: RateCache, start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
-    """Return rates for the range, using the cache when we already have the currency."""
+    """Return rates for the range, fetching currencies without full cache coverage."""
     currencies = [c.upper() for c in currencies]
-    if all(cache.has_currency(c) for c in currencies):
-        return cache.load(start, end, currencies)
-    fetched = fetch_rates(start, end, currencies)
-    cache.store(fetched)
+    missing = [currency for currency in currencies if not cache.covers(start, end, currency)]
+    if missing:
+        fetched = fetch_rates(start, end, missing)
+        cache.store(fetched)
+        cache.mark_coverage(start, end, missing)
     return cache.load(start, end, currencies)
 
 

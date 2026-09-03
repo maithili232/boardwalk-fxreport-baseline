@@ -1,8 +1,9 @@
 from datetime import date
+from unittest.mock import patch
 
 from fxreport.cache import RateCache
 from fxreport.cli import parse_args
-from fxreport.report import date_range, iso_week_key, render, weekly_averages
+from fxreport.report import date_range, get_rates, iso_week_key, render, weekly_averages
 
 
 def test_parse_args_defaults():
@@ -32,6 +33,32 @@ def test_cache_roundtrip(tmp_path):
     assert cache.has_currency("USD")
     loaded = cache.load(date(2024, 1, 1), date(2024, 1, 3), ["USD", "GBP"])
     assert loaded == {"2024-01-02": {"USD": 1.1, "GBP": 0.9}}
+    cache.close()
+
+
+def test_get_rates_refetches_when_currency_exists_outside_requested_range(tmp_path):
+    cache = RateCache(str(tmp_path / "t.db"))
+    cache.store({"2024-01-02": {"USD": 1.1}})
+    fetched = {"2024-02-01": {"USD": 1.2}}
+
+    with patch("fxreport.report.fetch_rates", return_value=fetched) as fetch:
+        rates = get_rates(cache, date(2024, 2, 1), date(2024, 2, 2), ["USD"])
+
+    fetch.assert_called_once_with(date(2024, 2, 1), date(2024, 2, 2), ["USD"])
+    assert rates == fetched
+    cache.close()
+
+
+def test_get_rates_reuses_complete_range_without_fetching_again(tmp_path):
+    cache = RateCache(str(tmp_path / "t.db"))
+    fetched = {"2024-02-01": {"USD": 1.2}}
+
+    with patch("fxreport.report.fetch_rates", return_value=fetched) as fetch:
+        first = get_rates(cache, date(2024, 2, 1), date(2024, 2, 2), ["USD"])
+        second = get_rates(cache, date(2024, 2, 1), date(2024, 2, 2), ["USD"])
+
+    assert first == second == fetched
+    fetch.assert_called_once()
     cache.close()
 
 
