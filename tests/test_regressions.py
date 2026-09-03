@@ -4,12 +4,16 @@ Each test here pins down a bug that was present in fxreport 0.3.1. Every one of
 them fails against the original code and passes after the corresponding fix.
 """
 
-from datetime import date
+import pathlib
+import sqlite3
+from datetime import date, timedelta
+from typing import Iterable
 
 import pytest
 import requests
 
 from fxreport import cli, client
+from fxreport.cache import RateCache
 from fxreport import report as report_module
 from fxreport.report import date_range, render, weekly_averages
 
@@ -172,3 +176,109 @@ def test_cli_reports_a_fetch_failure_distinctly(
     assert rc == 1
     assert "boom: unreachable" in err
     assert "no data" not in err
+
+
+def test_uncached_range_is_fetched_even_when_currency_is_known(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """Bug 5: get_rates() treated "we hold at least one row for USD" as a cache
+    hit, so once January had been fetched, asking for March returned whatever
+    the cache happened to hold for March -- nothing -- and the CLI printed
+    "no data for the requested range" without ever calling the API."""
+    cache = RateCache(str(tmp_path / "c.db"))
+    calls: list[tuple[date, date]] = []
+
+    def fake_fetch(
+        start: date, end: date, currencies: Iterable[str]
+    ) -> dict[str, dict[str, float]]:
+        calls.append((start, end))
+        if start.month == 1:
+            return {"2024-01-02": {"USD": 1.0956}}
+        return {"2024-03-04": {"USD": 1.0857}}
+
+    monkeypatch.setattr(report_module, "fetch_rates", fake_fetch)
+
+    jan = report_module.get_rates(cache, date(2024, 1, 1), date(2024, 1, 31), ["USD"])
+    assert jan == {"2024-01-02": {"USD": 1.0956}}
+
+    mar = report_module.get_rates(cache, date(2024, 3, 1), date(2024, 3, 31), ["USD"])
+    assert mar == {"2024-03-04": {"USD": 1.0857}}, "March must be fetched, not assumed cached"
+    assert len(calls) == 2
+    cache.close()
+
+
+def test_repeat_request_is_served_from_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """The flip side of bug 5: an identical repeat request must not hit the
+    network again, including over weekends and holidays that legitimately have
+    no rate rows of their own."""
+    cache = RateCache(str(tmp_path / "c.db"))
+    calls: list[tuple[date, date]] = []
+
+    def fake_fetch(
+        start: date, end: date, currencies: Iterable[str]
+    ) -> dict[str, dict[str, float]]:
+        calls.append((start, end))
+        return {"2024-01-02": {"USD": 1.0956}, "2024-01-03": {"USD": 1.0919}}
+
+    monkeypatch.setattr(report_module, "fetch_rates", fake_fetch)
+
+    first = report_module.get_rates(cache, date(2024, 1, 1), date(2024, 1, 7), ["USD"])
+    second = report_module.get_rates(cache, date(2024, 1, 1), date(2024, 1, 7), ["USD"])
+    assert first == second
+    assert len(calls) == 1, "second identical call must be served from the cache"
+
+    # A sub-range of an already fetched window is covered too.
+    report_module.get_rates(cache, date(2024, 1, 2), date(2024, 1, 5), ["USD"])
+    assert len(calls) == 1
+
+    # Adding a currency that was never fetched must trigger a fetch.
+    report_module.get_rates(cache, date(2024, 1, 1), date(2024, 1, 7), ["USD", "GBP"])
+    assert len(calls) == 2
+    cache.close()
+
+
+def test_coverage_does_not_extend_past_yesterday(tmp_path: pathlib.Path) -> None:
+    """A range running up to today must stay refetchable: today's rate may not
+    have been published yet when we first asked."""
+    cache = RateCache(str(tmp_path / "c.db"))
+    today = date.today()
+    start = today - timedelta(days=10)
+
+    cache.record_coverage("USD", start, today)
+    assert cache.covers("USD", start, today - timedelta(days=1))
+    assert not cache.covers("USD", start, today)
+    cache.close()
+
+
+def test_coverage_merges_adjacent_ranges(tmp_path: pathlib.Path) -> None:
+    """Two back-to-back fetches cover the union of their ranges."""
+    cache = RateCache(str(tmp_path / "c.db"))
+    cache.record_coverage("USD", date(2024, 1, 1), date(2024, 1, 31))
+    cache.record_coverage("USD", date(2024, 2, 1), date(2024, 2, 29))
+    assert cache.covered_ranges("USD") == [(date(2024, 1, 1), date(2024, 2, 29))]
+    assert cache.covers("USD", date(2024, 1, 15), date(2024, 2, 15))
+    assert not cache.covers("USD", date(2024, 1, 15), date(2024, 3, 15))
+    cache.close()
+
+
+def test_cache_opens_a_legacy_database(tmp_path: pathlib.Path) -> None:
+    """Databases written by 0.3.1 have no coverage table; opening one must add
+    it rather than fail, and the old rows stay readable."""
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(db))
+    conn.executescript(
+        "CREATE TABLE rates (day TEXT NOT NULL, currency TEXT NOT NULL, "
+        "rate REAL NOT NULL, PRIMARY KEY (day, currency));"
+        "INSERT INTO rates VALUES ('2024-01-02', 'USD', 1.0956);"
+    )
+    conn.commit()
+    conn.close()
+
+    cache = RateCache(str(db))
+    assert cache.load(date(2024, 1, 1), date(2024, 1, 3), ["USD"]) == {
+        "2024-01-02": {"USD": 1.0956}
+    }
+    assert not cache.covers("USD", date(2024, 1, 1), date(2024, 1, 3))
+    cache.close()
