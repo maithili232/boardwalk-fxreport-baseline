@@ -1,8 +1,9 @@
-__pycache__/
-*.pyc
+*.db
 *.egg-info/
+.mypy_cache/
+.ruff_cache/
+.venv*/
 build/
 dist/
-.venv/
-*.db
-reports/
+__pycache__/
+*.py[cod]

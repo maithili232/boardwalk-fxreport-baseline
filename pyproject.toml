@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fxreport"
+version = "1.0.0"
+description = "Weekly EUR exchange rate summaries from the Frankfurter API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests==2.34.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build==1.6.0",
+    "mypy==2.3.1",
+    "pip-tools==7.6.1",
+    "pytest==9.1.1",
+    "ruff==0.16.5",
+    "types-requests==2.33.0.20260712",
+]
+
+[project.scripts]
+fxreport = "fxreport.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fxreport*"]
+
+[tool.setuptools.package-data]
+fxreport = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["fxreport", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+testpaths = ["tests"]

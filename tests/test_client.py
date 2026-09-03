@@ -7,7 +7,7 @@ import requests
 from fxreport.client import RateFetchError, fetch_rates
 
 
-def test_fetch_rates_raises_after_retries_are_exhausted():
+def test_fetch_rates_raises_after_retries_are_exhausted() -> None:
     with (
         patch(
             "fxreport.client.requests.get",

@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from collections.abc import Sequence
 from datetime import date
 
 from fxreport import __version__
@@ -10,17 +11,21 @@ from fxreport.client import RateFetchError
 from fxreport.report import get_rates, render, weekly_averages
 
 
-def parse_args(argv=None):
-    p = argparse.ArgumentParser(prog="fxreport", description="Weekly EUR exchange rate summaries")
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="fxreport", description="Weekly EUR exchange rate summaries"
+    )
     p.add_argument("--start", required=True, help="start date YYYY-MM-DD (inclusive)")
     p.add_argument("--end", required=True, help="end date YYYY-MM-DD (inclusive)")
-    p.add_argument("--currencies", default="USD,GBP", help="comma separated currency codes")
+    p.add_argument(
+        "--currencies", default="USD,GBP", help="comma separated currency codes"
+    )
     p.add_argument("--db", default="fxreport.db", help="path to sqlite cache")
-    p.add_argument("--version", action="version", version="fxreport {}".format(__version__))
+    p.add_argument("--version", action="version", version=f"fxreport {__version__}")
     return p.parse_args(argv)
 
 
-def main(argv=None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
@@ -34,7 +39,7 @@ def main(argv=None) -> int:
         try:
             rates = get_rates(cache, start, end, currencies)
         except RateFetchError as error:
-            print("error: {}".format(error), file=sys.stderr)
+            print(f"error: {error}", file=sys.stderr)
             return 1
     finally:
         cache.close()

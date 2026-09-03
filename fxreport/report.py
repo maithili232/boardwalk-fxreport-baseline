@@ -1,14 +1,14 @@
 """Reporting helpers: date ranges, weekly aggregation, text rendering."""
 
 from collections import OrderedDict
+from collections.abc import Iterable
 from datetime import date, timedelta
-from typing import Dict, Iterable, List
 
 from fxreport.cache import RateCache
 from fxreport.client import fetch_rates
 
 
-def date_range(start: date, end: date) -> List[date]:
+def date_range(start: date, end: date) -> list[date]:
     """All calendar days from start to end inclusive."""
     days = []
     for offset in range((end - start).days + 1):
@@ -18,13 +18,17 @@ def date_range(start: date, end: date) -> List[date]:
 
 def iso_week_key(day: date) -> str:
     year, week, _ = day.isocalendar()
-    return "{}-W{:02d}".format(year, week)
+    return f"{year}-W{week:02d}"
 
 
-def get_rates(cache: RateCache, start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
+def get_rates(
+    cache: RateCache, start: date, end: date, currencies: Iterable[str]
+) -> dict[str, dict[str, float]]:
     """Return rates for the range, fetching currencies without full cache coverage."""
     currencies = [c.upper() for c in currencies]
-    missing = [currency for currency in currencies if not cache.covers(start, end, currency)]
+    missing = [
+        currency for currency in currencies if not cache.covers(start, end, currency)
+    ]
     if missing:
         fetched = fetch_rates(start, end, missing)
         cache.store(fetched)
@@ -32,9 +36,11 @@ def get_rates(cache: RateCache, start: date, end: date, currencies: Iterable[str
     return cache.load(start, end, currencies)
 
 
-def weekly_averages(rates: Dict[str, Dict[str, float]], currencies: Iterable[str]) -> "OrderedDict[str, Dict[str, float]]":
+def weekly_averages(
+    rates: dict[str, dict[str, float]], currencies: Iterable[str]
+) -> OrderedDict[str, dict[str, float]]:
     """Average rate per ISO week per currency."""
-    buckets: Dict[str, Dict[str, List[float]]] = {}
+    buckets: dict[str, dict[str, list[float]]] = {}
     for day_str in sorted(rates):
         day = date.fromisoformat(day_str)
         key = iso_week_key(day)
@@ -44,7 +50,7 @@ def weekly_averages(rates: Dict[str, Dict[str, float]], currencies: Iterable[str
                 continue
             buckets.setdefault(key, {}).setdefault(currency, []).append(rate)
 
-    result: "OrderedDict[str, Dict[str, float]]" = OrderedDict()
+    result: OrderedDict[str, dict[str, float]] = OrderedDict()
     for key in sorted(buckets):
         result[key] = {}
         for currency, values in buckets[key].items():
@@ -52,11 +58,15 @@ def weekly_averages(rates: Dict[str, Dict[str, float]], currencies: Iterable[str
     return result
 
 
-def render(weekly: "OrderedDict[str, Dict[str, float]]", currencies: Iterable[str]) -> str:
+def render(
+    weekly: OrderedDict[str, dict[str, float]], currencies: Iterable[str]
+) -> str:
     currencies = list(currencies)
-    header = "week      " + "".join("{:>10}".format(c) for c in currencies)
+    header = "week      " + "".join(f"{c:>10}" for c in currencies)
     lines = [header, "-" * len(header)]
     for week, by_currency in weekly.items():
-        cells = "".join("{:>10.4f}".format(by_currency.get(c, float("nan"))) for c in currencies)
-        lines.append("{:<10}{}".format(week, cells))
+        cells = "".join(
+            "{:>10.4f}".format(by_currency.get(c, float("nan"))) for c in currencies
+        )
+        lines.append(f"{week:<10}{cells}")
     return "\n".join(lines)

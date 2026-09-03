@@ -1,8 +1,8 @@
 """SQLite cache for daily rates."""
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import date
-from typing import Dict, Iterable, Optional
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rates (
@@ -39,7 +39,7 @@ class RateCache:
         ).fetchone()
         return row is not None
 
-    def store(self, rates: Dict[str, Dict[str, float]]) -> int:
+    def store(self, rates: dict[str, dict[str, float]]) -> int:
         rows = []
         for day, by_currency in rates.items():
             for currency, rate in by_currency.items():
@@ -50,12 +50,9 @@ class RateCache:
         self.conn.commit()
         return len(rows)
 
-    def mark_coverage(
-        self, start: date, end: date, currencies: Iterable[str]
-    ) -> None:
+    def mark_coverage(self, start: date, end: date, currencies: Iterable[str]) -> None:
         rows = [
-            (start.isoformat(), end.isoformat(), currency)
-            for currency in currencies
+            (start.isoformat(), end.isoformat(), currency) for currency in currencies
         ]
         self.conn.executemany(
             "INSERT OR IGNORE INTO rate_ranges "
@@ -83,18 +80,22 @@ class RateCache:
                 return True
         return False
 
-    def load(self, start: date, end: date, currencies: Iterable[str]) -> Dict[str, Dict[str, float]]:
-        out: Dict[str, Dict[str, float]] = {}
+    def load(
+        self, start: date, end: date, currencies: Iterable[str]
+    ) -> dict[str, dict[str, float]]:
+        out: dict[str, dict[str, float]] = {}
         for currency in currencies:
             cur = self.conn.execute(
-                "SELECT day, rate FROM rates WHERE currency = ? AND day >= ? AND day <= ? ORDER BY day",
+                "SELECT day, rate FROM rates "
+                "WHERE currency = ? AND day >= ? AND day <= ? "
+                "ORDER BY day",
                 (currency, start.isoformat(), end.isoformat()),
             )
             for day, rate in cur.fetchall():
                 out.setdefault(day, {})[currency] = rate
         return out
 
-    def latest_day(self, currency: str) -> Optional[str]:
+    def latest_day(self, currency: str) -> str | None:
         row = self.conn.execute(
             "SELECT MAX(day) FROM rates WHERE currency = ?", (currency,)
         ).fetchone()

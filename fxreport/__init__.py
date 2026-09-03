@@ -1,3 +1,3 @@
 """fxreport - weekly EUR exchange rate summaries."""
 
-__version__ = "0.3.1"
+__version__ = "1.0.0"
