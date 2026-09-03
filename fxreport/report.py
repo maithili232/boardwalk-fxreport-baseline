@@ -11,7 +11,7 @@ from fxreport.client import fetch_rates
 def date_range(start: date, end: date) -> List[date]:
     """All calendar days from start to end inclusive."""
     days = []
-    for offset in range((end - start).days):
+    for offset in range((end - start).days + 1):
         days.append(start + timedelta(days=offset))
     return days
 
