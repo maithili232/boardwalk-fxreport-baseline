@@ -2,7 +2,7 @@ from datetime import date
 
 from fxreport.cache import RateCache
 from fxreport.cli import parse_args
-from fxreport.report import iso_week_key, render, weekly_averages
+from fxreport.report import date_range, iso_week_key, render, weekly_averages
 
 
 def test_parse_args_defaults():
@@ -14,6 +14,15 @@ def test_parse_args_defaults():
 def test_iso_week_key():
     assert iso_week_key(date(2024, 1, 1)) == "2024-W01"
     assert iso_week_key(date(2023, 12, 31)) == "2023-W52"
+
+
+def test_date_range_includes_both_endpoints():
+    assert date_range(date(2024, 1, 1), date(2024, 1, 3)) == [
+        date(2024, 1, 1),
+        date(2024, 1, 2),
+        date(2024, 1, 3),
+    ]
+    assert date_range(date(2024, 1, 1), date(2024, 1, 1)) == [date(2024, 1, 1)]
 
 
 def test_cache_roundtrip(tmp_path):
