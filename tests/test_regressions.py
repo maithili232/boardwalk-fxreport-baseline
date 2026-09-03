@@ -7,7 +7,9 @@ them fails against the original code and passes after the corresponding fix.
 from datetime import date
 
 import pytest
+import requests
 
+from fxreport import client
 from fxreport.report import date_range, render, weekly_averages
 
 
@@ -54,3 +56,40 @@ def test_render_shows_distinct_weekly_values() -> None:
     out = render(weekly_averages(rates, ["USD"]), ["USD"])
     week_values = [line.split()[1] for line in out.splitlines()[2:]]
     assert week_values == ["1.0938", "1.0945"]
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict[str, object], status: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} error")
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+def test_fetch_rates_drops_days_outside_requested_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bug 3: Frankfurter extends a range backwards to the previous business
+    day, so a Monday-holiday start such as 2024-01-01 comes back with
+    2023-12-29 attached. fetch_rates() passed that straight through, seeding
+    the cache with out-of-range days and (for any caller not re-filtering via
+    the cache) inventing a spurious 2023-W52 row in the report."""
+    payload = {
+        "base": "EUR",
+        "rates": {
+            "2023-12-29": {"USD": 1.1050},
+            "2024-01-02": {"USD": 1.0956},
+            "2024-01-03": {"USD": 1.0919},
+        },
+    }
+    monkeypatch.setattr(
+        client.requests, "get", lambda *a, **k: _FakeResponse(payload)
+    )
+    got = client.fetch_rates(date(2024, 1, 1), date(2024, 1, 3), ["USD"])
+    assert sorted(got) == ["2024-01-02", "2024-01-03"]
+    assert "2023-12-29" not in got

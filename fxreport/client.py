@@ -25,8 +25,21 @@ def fetch_rates(start: date, end: date, currencies: Iterable[str]) -> Dict[str, 
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
             payload = resp.json()
-            return payload.get("rates", {})
+            return _within_range(payload.get("rates", {}), start, end)
         except requests.RequestException:
             time.sleep(BACKOFF_SECONDS * (attempt + 1))
             continue
     return {}
+
+
+def _within_range(
+    rates: Dict[str, Dict[str, float]], start: date, end: date
+) -> Dict[str, Dict[str, float]]:
+    """Drop any day the API returned that falls outside [start, end].
+
+    Frankfurter widens a range request backwards to the closest preceding
+    business day, so a query starting on a weekend or a holiday comes back
+    with an extra day in front of the requested window.
+    """
+    lo, hi = start.isoformat(), end.isoformat()
+    return {day: by_currency for day, by_currency in rates.items() if lo <= day <= hi}
