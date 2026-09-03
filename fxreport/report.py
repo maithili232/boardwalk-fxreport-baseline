@@ -41,7 +41,7 @@ def weekly_averages(rates: Dict[str, Dict[str, float]], currencies: Iterable[str
             rate = rates[day_str].get(currency)
             if rate is None:
                 continue
-            buckets.setdefault(key, {}).setdefault(currency, []).append(round(rate, 2))
+            buckets.setdefault(key, {}).setdefault(currency, []).append(rate)
 
     result: "OrderedDict[str, Dict[str, float]]" = OrderedDict()
     for key in sorted(buckets):

@@ -45,6 +45,15 @@ def test_weekly_averages_single_week():
     assert abs(weekly["2024-W01"]["USD"] - 1.10) < 1e-9
 
 
+def test_weekly_averages_preserve_source_precision():
+    rates = {
+        "2024-01-02": {"USD": 1.2341},
+        "2024-01-03": {"USD": 1.2349},
+    }
+    weekly = weekly_averages(rates, ["USD"])
+    assert abs(weekly["2024-W01"]["USD"] - 1.2345) < 1e-12
+
+
 def test_render_has_header():
     out = render(weekly_averages({"2024-01-02": {"USD": 1.1}}, ["USD"]), ["USD"])
     assert out.splitlines()[0].startswith("week")
